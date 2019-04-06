@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"gopkg.in/src-d/go-git.v4"
 )
 
 func TestWebhookServerSIGINT(t *testing.T) {
@@ -40,20 +40,28 @@ func TestWebhookTLS(t *testing.T) {
 }
 
 func TestBuildHandler(t *testing.T) {
+	r, err := git.PlainOpen("../..")
+	if err != nil {
+		t.Fatalf("Error opening git repo: %v", err)
+	}
+	ref, err := r.Head()
+	if err != nil {
+		t.Fatalf("Error getting Head reference: %v", err)
+	}
+
 	handlertests := []struct {
 		in         []string
 		out        string
 		statusCode int
 	}{
-		{[]string{"echo", "-n", "hello", "world"}, "hello world", 200},
-		{[]string{"sh", "-c", "echo $USER"}, os.Getenv("USER") + "\n", 200},
-		{[]string{"commandDoesNotExist"}, "exec: \"commandDoesNotExist\": executable file not found in $PATH\n", 424},
+		{[]string{"test/script_test.sh"}, "Streaming 1!\nStreaming 2!\nStreaming 3!\n", 200},
+		{[]string{"test/nonexistent.sh"}, "test/nonexistent.sh: no such file or directory\n", 424},
 	}
 
 	for i, tt := range handlertests {
 		t.Run(fmt.Sprintf("cmd Handler Test %v", i), func(t *testing.T) {
-			handlerFunc := buildHandler(tt.in[0], tt.in[1:]...)
-			req, err := http.NewRequest("GET", "/build", nil)
+			handlerFunc := buildHandler("https://github.com/iceguard/iot-cicd.git", tt.in[0], tt.in[1:]...)
+			req, err := http.NewRequest("GET", "/build/"+ref.Hash().String(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,9 +72,9 @@ func TestBuildHandler(t *testing.T) {
 			handler.ServeHTTP(rr, req)
 
 			// Check the status code is what we expect.
-			assert.Equal(t, rr.Code, tt.statusCode)
+			assert.Equal(t, tt.statusCode, rr.Code)
 			// Check the response body is what we expect.
-			assert.Equal(t, rr.Body.String(), tt.out)
+			assert.Contains(t, rr.Body.String(), tt.out)
 		})
 	}
 }

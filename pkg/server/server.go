@@ -1,16 +1,23 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"gopkg.in/src-d/go-git.v4"
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"k8s.io/klog"
 )
@@ -42,6 +49,12 @@ type keyPair struct {
 type tls struct {
 	enabled bool
 	keyPair
+}
+
+type buildContext struct {
+	commitID string
+	repoPath string
+	repoURL  string
 }
 
 // New creates a new Server instance that will listen on the given address
@@ -136,22 +149,39 @@ func (fw *flushWriter) Write(p []byte) (n int, err error) {
 
 // RegisterBuildHandler registers the endpoint for the build script and its
 // arguments (if any)
-func (srv *Server) RegisterBuildHandler(endpoint, buildScript string, args ...string) {
+func (srv *Server) RegisterBuildHandler(repoURL, endpoint, buildScript string, args ...string) {
 	klog.Infof("Registering command \"%v %v\" on endpoint %v", buildScript, args, endpoint)
-	srv.mux.HandleFunc(endpoint, buildHandler(buildScript, args...))
+	srv.mux.HandleFunc(endpoint, buildHandler(repoURL, buildScript, args...))
 }
 
-func buildHandler(buildScript string, args ...string) func(http.ResponseWriter, *http.Request) {
+func buildHandler(repoURL, buildScript string, args ...string) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		klog.Infof("Got request to exec command")
+		klog.Infof("Got request to build")
+
+		commitID := extractCommitID(r.URL)
+
 		fw := flushWriter{w: w}
 		if f, ok := w.(http.Flusher); ok {
 			fw.f = f
 		}
-		cmd := exec.Command(buildScript, args...)
+
+		// We need to create a buffer (and cannot give flushWriter),
+		// as the prepareRepository method closes the Writer when
+		// finished. We still need the flushWriter afterwards
+		var buf bytes.Buffer
+		buf.WriteTo(&fw)
+		repoPath, err := prepareRepository(repoURL, commitID, &buf)
+		if err != nil {
+			promStatusFailedBuild.Inc()
+			klog.Errorf("Error cloning repository: %v", err)
+			http.Error(w, err.Error(), http.StatusFailedDependency)
+			return
+		}
+
+		cmd := exec.Command(filepath.Join(repoPath, buildScript), args...)
 		cmd.Stdout = &fw
 		cmd.Stderr = &fw
-		err := cmd.Run()
+		err = cmd.Run()
 		if err != nil {
 			promStatusFailedBuild.Inc()
 			klog.Errorf("Error executing command: %v", err)
@@ -160,4 +190,53 @@ func buildHandler(buildScript string, args ...string) func(http.ResponseWriter, 
 		}
 		promStatusOK.Inc()
 	}
+}
+
+// extractCommitID takes the URL and extracts the commit id
+func extractCommitID(url *url.URL) string {
+	var commitID string
+	if url.Path[1:] != "build" {
+		commitID = strings.Replace(url.Path[1:], "build/", "", 1)
+	}
+
+	return commitID
+}
+
+// prepareRepository checks out the given git repository and commit from
+// the build context URL into the build context path and writes the clone
+// output to the given writer.
+// If no commitID is given, the default branch is checked out
+func prepareRepository(repoURL, commitID string, w io.Writer) (repoPath string, err error) {
+	klog.Infof("Cloning repo %v, checking out commit %v", repoURL, commitID)
+	repoPath, err = ioutil.TempDir("", "iot-cicd")
+	if err != nil {
+		return "", err
+	}
+
+	r, err := git.PlainClone(repoPath, false, &git.CloneOptions{
+		URL:      repoURL,
+		Progress: w,
+	})
+	if err != nil {
+		return "", errors.Wrapf(err, "Error cloning module %v", repoURL)
+	}
+
+	if commitID == "" {
+		return repoPath, nil
+	}
+
+	klog.V(1).Infof("checking out commit id %v to %v", commitID, repoPath)
+	wt, err := r.Worktree()
+	if err != nil {
+		return "", errors.Wrapf(err, "Error extracting worktree")
+	}
+
+	err = wt.Checkout(&git.CheckoutOptions{
+		Hash: gitplumbing.NewHash(commitID),
+	})
+	if err != nil {
+		return "", errors.Wrapf(err, "Error checking out commid id %v", commitID)
+	}
+
+	return repoPath, nil
 }
