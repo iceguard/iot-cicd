@@ -207,12 +207,12 @@ func extractCommitID(url *url.URL) string {
 // output to the given writer.
 // If no commitID is given, the default branch is checked out
 func prepareRepository(repoURL, commitID string, w io.Writer) (repoPath string, err error) {
-	klog.Infof("Cloning repo %v, checking out commit %v", repoURL, commitID)
 	repoPath, err = ioutil.TempDir("", "iot-cicd")
 	if err != nil {
 		return "", err
 	}
 
+	klog.Infof("Cloning repo %v to %v", repoURL, repoPath)
 	r, err := git.PlainClone(repoPath, false, &git.CloneOptions{
 		URL:      repoURL,
 		Progress: w,

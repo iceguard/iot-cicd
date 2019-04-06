@@ -11,6 +11,7 @@ import (
 )
 
 func main() {
+	// All those flags 🏁 🏴 🏳️
 	klog.InitFlags(nil)
 	defer klog.Flush()
 	serverAddr := flag.String("address", "127.0.0.1", "address (interface) to listen on")
@@ -22,6 +23,7 @@ func main() {
 
 	buildArgs := strings.Split(*buildArg, ",")
 
+	// Set up the server
 	srv := server.New(fmt.Sprintf("%v:%v", *serverAddr, *serverPort))
 	srv.RegisterBuildHandler(*repoURL, "/build", *buildScript, buildArgs...)
 	srv.EnablePrometheus("/metrics")

@@ -40,10 +40,13 @@ func TestWebhookTLS(t *testing.T) {
 }
 
 func TestBuildHandler(t *testing.T) {
+	// Open the git repo that contains this program to
+	// extract a valid commit id
 	r, err := git.PlainOpen("../..")
 	if err != nil {
 		t.Fatalf("Error opening git repo: %v", err)
 	}
+	// extract the reference from the current head
 	ref, err := r.Head()
 	if err != nil {
 		t.Fatalf("Error getting Head reference: %v", err)
@@ -68,12 +71,9 @@ func TestBuildHandler(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 			handler := http.HandlerFunc(handlerFunc)
-
 			handler.ServeHTTP(rr, req)
 
-			// Check the status code is what we expect.
 			assert.Equal(t, tt.statusCode, rr.Code)
-			// Check the response body is what we expect.
 			assert.Contains(t, rr.Body.String(), tt.out)
 		})
 	}
