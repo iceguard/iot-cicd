@@ -42,3 +42,23 @@ To execute the e2e script, call
 
 All the configuration is done through command line arguments.
 See `iot-cicd --help` for more information
+
+## Using
+
+Once the webserver is started, it is ready to accept incoming connections
+on `/build`.
+When doing a request like this:
+
+```
+> curl http://iot-cicd/build/[commit-id]
+```
+
+the server is going to check out the git repository on the specified
+commit id and build the software with this.
+If no commit id is given (e.g. a plain call on `http://iot-cicd/build`),
+master will be used to build.
+
+## Monitoring
+
+There is a built-in monitoring endpoint reachable on `/metrics`. It is
+a prometheus endpoint with some custom metrics.
