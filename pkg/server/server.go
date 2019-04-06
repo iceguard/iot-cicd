@@ -167,6 +167,7 @@ func buildHandler(buildScript string, args ...string) func(http.ResponseWriter, 
 		err := cmd.Run()
 		if err != nil {
 			klog.Errorf("Error executing command: %v", err)
+			http.Error(w, err.Error(), http.StatusFailedDependency)
 		}
 	}
 }

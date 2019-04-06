@@ -41,11 +41,13 @@ func TestWebhookTLS(t *testing.T) {
 
 func TestBuildHandler(t *testing.T) {
 	handlertests := []struct {
-		in  []string
-		out string
+		in         []string
+		out        string
+		statusCode int
 	}{
-		{[]string{"echo", "-n", "hello", "world"}, "hello world"},
-		{[]string{"sh", "-c", "echo $USER"}, os.Getenv("USER") + "\n"},
+		{[]string{"echo", "-n", "hello", "world"}, "hello world", 200},
+		{[]string{"sh", "-c", "echo $USER"}, os.Getenv("USER") + "\n", 200},
+		{[]string{"commandDoesNotExist"}, "exec: \"commandDoesNotExist\": executable file not found in $PATH\n", 424},
 	}
 
 	for i, tt := range handlertests {
@@ -62,17 +64,9 @@ func TestBuildHandler(t *testing.T) {
 			handler.ServeHTTP(rr, req)
 
 			// Check the status code is what we expect.
-			if status := rr.Code; status != http.StatusOK {
-				t.Errorf("handler returned wrong status code: got %v want %v",
-					status, http.StatusOK)
-			}
-
+			assert.Equal(t, rr.Code, tt.statusCode)
 			// Check the response body is what we expect.
-			expected := tt.out
-			if rr.Body.String() != expected {
-				t.Errorf("handler returned unexpected body: got %v want %v",
-					rr.Body.String(), expected)
-			}
+			assert.Equal(t, rr.Body.String(), tt.out)
 		})
 	}
 }
