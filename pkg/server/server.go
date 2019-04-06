@@ -12,33 +12,18 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/klog"
 )
 
-const (
-	errDecodingAdmissionReview = "error decoding admission review"
-	errEmptyHTTPBody           = "empty body"
-	errEncodingAdmissionReview = "error encoding admission review"
-	errInvalidHTTPContentType  = "invalid Content-Type, expect `application/json`"
-	errListenServeWebhook      = "failed to listen and serve webhook server"
-	errWritingHTTPBody         = "error writing HTTP body"
-)
-
 var (
-	runtimeScheme = runtime.NewScheme()
-	codecs        = serializer.NewCodecFactory(runtimeScheme)
-	deserializer  = codecs.UniversalDeserializer()
-	signalChan    = make(chan os.Signal, 1)
+	signalChan = make(chan os.Signal, 1)
 )
 
 // Server handles the http part of admission reviews / responses
 type Server struct {
-	server    *http.Server
-	mux       *http.ServeMux
-	endpoints endpoints
-	tls       tls
+	server *http.Server
+	mux    *http.ServeMux
+	tls    tls
 }
 
 type flushWriter struct {
@@ -59,7 +44,7 @@ type tls struct {
 	keyPair
 }
 
-// New is a constructor
+// New creates a new Server instance that will listen on the given address
 func New(addr string) *Server {
 	return &Server{
 		server: &http.Server{
@@ -72,7 +57,8 @@ func New(addr string) *Server {
 	}
 }
 
-// RegisterEndpoints can be used to register additional http endpoints and the corresponding functions
+// RegisterEndpoints can be used to register additional http endpoints and
+// their corresponding functions
 func (srv *Server) RegisterEndpoints(endpoints endpoints) {
 	for url, function := range endpoints {
 		klog.V(1).Infof("Registering additional endpoint %v", url)
@@ -93,8 +79,8 @@ func (srv *Server) EnableTLS(keypair keyPair) {
 	srv.tls.keyPair = keypair
 }
 
-// Start starts the webhook server. This call is blocking and does not return until
-// either Os.Shutdown signal or an error occurs
+// Start starts the webhook server. This call is blocking and does not return
+// until either Os.Shutdown signal or an error occurs
 func (srv *Server) Start() error {
 	srv.server.Handler = srv.mux
 	errChan := srv.StartBackground()
@@ -111,8 +97,8 @@ func (srv *Server) Start() error {
 	}
 }
 
-// StartBackground starts the server in a goroutine and returns a channel that contains
-// errors (if any)
+// StartBackground starts the server in a goroutine and returns a channel that
+// contains errors (if any)
 func (srv *Server) StartBackground() chan error {
 	klog.Infof("Starting Server...")
 	// start webhook server in new routine
@@ -126,7 +112,7 @@ func (srv *Server) StartBackground() chan error {
 		}
 
 		if err != http.ErrServerClosed {
-			errChan <- errors.Wrap(err, errListenServeWebhook)
+			errChan <- errors.Wrap(err, "error starting webserver")
 		} else {
 			errChan <- nil
 		}
@@ -137,7 +123,7 @@ func (srv *Server) StartBackground() chan error {
 // Stop stops a running server
 func (srv *Server) Stop() {
 	klog.Infof("Stopping Server...")
-	srv.server.Shutdown(context.Background())
+	_ = srv.server.Shutdown(context.Background())
 }
 
 func (fw *flushWriter) Write(p []byte) (n int, err error) {
@@ -148,7 +134,8 @@ func (fw *flushWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
-// RegisterBuildHandler registers the endpoint for the build script and its arguments (if any)
+// RegisterBuildHandler registers the endpoint for the build script and its
+// arguments (if any)
 func (srv *Server) RegisterBuildHandler(endpoint, buildScript string, args ...string) {
 	klog.Infof("Registering command \"%v %v\" on endpoint %v", buildScript, args, endpoint)
 	srv.mux.HandleFunc(endpoint, buildHandler(buildScript, args...))
@@ -166,8 +153,11 @@ func buildHandler(buildScript string, args ...string) func(http.ResponseWriter, 
 		cmd.Stderr = &fw
 		err := cmd.Run()
 		if err != nil {
+			promStatusFailedBuild.Inc()
 			klog.Errorf("Error executing command: %v", err)
 			http.Error(w, err.Error(), http.StatusFailedDependency)
+			return
 		}
+		promStatusOK.Inc()
 	}
 }

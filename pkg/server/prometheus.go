@@ -1,15 +1,18 @@
 package server
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
 
 var (
-	prometheusHandler = prometheus.NewCounterVec(
+	prometheusHandler = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "http_requests_total",
+			Name: "iot_cicd_requests_total",
 			Help: "How many HTTP requests processed, partitioned by status code",
 		},
 		[]string{"code"},
 	)
-	promStatusOK       = prometheusHandler.WithLabelValues("200")
-	promStatusNotFound = prometheusHandler.WithLabelValues("404")
+	promStatusOK          = prometheusHandler.WithLabelValues("200")
+	promStatusFailedBuild = prometheusHandler.WithLabelValues("424")
 )

@@ -23,6 +23,7 @@ func main() {
 
 	srv := server.New(fmt.Sprintf("%v:%v", *serverAddr, *serverPort))
 	srv.RegisterBuildHandler("/build", *buildScript, buildArgs...)
+	srv.EnablePrometheus("/metrics")
 
 	klog.Infof("Starting to serve on %v:%v\n", *serverAddr, *serverPort)
 	err := srv.Start()
