@@ -51,12 +51,6 @@ type tls struct {
 	keyPair
 }
 
-type buildContext struct {
-	commitID string
-	repoPath string
-	repoURL  string
-}
-
 // New creates a new Server instance that will listen on the given address
 func New(addr string) *Server {
 	return &Server{
