@@ -171,6 +171,7 @@ func buildHandler(repoURL, buildScript string, args ...string) func(http.Respons
 		var buf bytes.Buffer
 		buf.WriteTo(&fw)
 		repoPath, err := prepareRepository(repoURL, commitID, &buf)
+		defer os.RemoveAll(repoPath)
 		if err != nil {
 			promStatusFailedBuild.Inc()
 			klog.Errorf("Error cloning repository: %v", err)
