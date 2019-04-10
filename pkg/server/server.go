@@ -21,6 +21,8 @@ var (
 	signalChan = make(chan os.Signal, 1)
 )
 
+const symlinkPath = "/tmp/iot-cicd"
+
 // Server handles the http part of admission reviews / responses
 type Server struct {
 	server *http.Server
@@ -168,7 +170,19 @@ func buildHandler(repoURL, buildScript string, args ...string) func(http.Respons
 			return
 		}
 
-		cmd := exec.Command(filepath.Join(repoPath, buildScript), args...)
+		// The symlink servers as a static path to mount into the docker
+		// container. If we do not have that, it would not be sufficient
+		// just to stop and start the container again.
+		err = os.Symlink(repoPath, symlinkPath)
+		if err != nil {
+			promStatusFailedBuild.Inc()
+			klog.Errorf("Error creating symlink: %v", err)
+			http.Error(w, err.Error(), http.StatusFailedDependency)
+			return
+		}
+		defer os.RemoveAll(symlinkPath)
+
+		cmd := exec.Command(filepath.Join(symlinkPath, buildScript), args...)
 		cmd.Stdout = &fw
 		cmd.Stderr = &fw
 		err = cmd.Run()
