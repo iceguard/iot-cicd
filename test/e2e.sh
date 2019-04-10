@@ -17,8 +17,8 @@ stop_server() {
 test_build() {
     # There is no way to check streaming output through curl
     # so please do that manually
-    curl -s localhost:$PORT/build
-    statuscode="$(curl -s -o /dev/null localhost:$PORT/build -w "%{http_code}")"
+    curl -s localhost:$PORT/build/
+    statuscode="$(curl -s -o /dev/null localhost:$PORT/build/ -w "%{http_code}")"
     if [ "$statuscode" -ne 200 ]; then
         echo "Did not receive correct status code"
         error ${LINENO} "Got status code $statuscode, expected 200"
@@ -36,7 +36,7 @@ test_build() {
     TEST_SCRIPT_NAME="nonexisting_script.sh"
     start_server
 
-    statuscode="$(curl -s -o /dev/null localhost:$PORT/build -w "%{http_code}")"
+    statuscode="$(curl -s -o /dev/null localhost:$PORT/build/ -w "%{http_code}")"
     if [ "$statuscode" -ne 424 ]; then
         echo "Did not receive correct status code for failure!"
         error ${LINENO} "Got status code $statuscode, expected 424"
