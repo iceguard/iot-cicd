@@ -4,20 +4,15 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"gopkg.in/src-d/go-git.v4"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"k8s.io/klog"
 )
@@ -164,7 +159,7 @@ func buildHandler(repoURL, buildScript string, args ...string) func(http.Respons
 		// finished. We still need the flushWriter afterwards
 		var buf bytes.Buffer
 		buf.WriteTo(&fw)
-		repoPath, err := prepareRepository(repoURL, commitID, &buf)
+		repoPath, err := cloneRepository(repoURL, commitID, &buf)
 		defer os.RemoveAll(repoPath)
 		if err != nil {
 			promStatusFailedBuild.Inc()
@@ -185,53 +180,4 @@ func buildHandler(repoURL, buildScript string, args ...string) func(http.Respons
 		}
 		promStatusOK.Inc()
 	}
-}
-
-// extractCommitID takes the URL and extracts the commit id
-func extractCommitID(url *url.URL) string {
-	var commitID string
-	if url.Path[1:] != "build" {
-		commitID = strings.Replace(url.Path[1:], "build/", "", 1)
-	}
-
-	return commitID
-}
-
-// prepareRepository checks out the given git repository and commit from
-// the build context URL into the build context path and writes the clone
-// output to the given writer.
-// If no commitID is given, the default branch is checked out
-func prepareRepository(repoURL, commitID string, w io.Writer) (repoPath string, err error) {
-	repoPath, err = ioutil.TempDir("", "iot-cicd")
-	if err != nil {
-		return "", err
-	}
-
-	klog.Infof("Cloning repo %v to %v", repoURL, repoPath)
-	r, err := git.PlainClone(repoPath, false, &git.CloneOptions{
-		URL:      repoURL,
-		Progress: w,
-	})
-	if err != nil {
-		return "", errors.Wrapf(err, "Error cloning module %v", repoURL)
-	}
-
-	if commitID == "" {
-		return repoPath, nil
-	}
-
-	klog.V(1).Infof("checking out commit id %v to %v", commitID, repoPath)
-	wt, err := r.Worktree()
-	if err != nil {
-		return "", errors.Wrapf(err, "Error extracting worktree")
-	}
-
-	err = wt.Checkout(&git.CheckoutOptions{
-		Hash: gitplumbing.NewHash(commitID),
-	})
-	if err != nil {
-		return "", errors.Wrapf(err, "Error checking out commid id %v", commitID)
-	}
-
-	return repoPath, nil
 }

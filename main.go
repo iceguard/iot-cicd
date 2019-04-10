@@ -16,7 +16,7 @@ func main() {
 	defer klog.Flush()
 	serverAddr := flag.String("address", "127.0.0.1", "address (interface) to listen on")
 	serverPort := flag.Int("port", 8080, "port to listen on for requests")
-	buildScript := flag.String("script", "Device/build.sh", "path to the build script")
+	buildScript := flag.String("script", "Device/build.sh", "relative path to the build script")
 	buildArg := flag.String("args", "", "comma-separated list of arguments given to the build script")
 	repoURL := flag.String("repo-url", "https://github.com/iceguard/mxchip", "Git URL to clone for build process")
 	flag.Parse()
