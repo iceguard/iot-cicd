@@ -55,8 +55,8 @@ When doing a request like this:
 
 the server is going to check out the git repository on the specified
 commit id and build the software with this.
-If no commit id is given (e.g. a plain call on `http://iot-cicd/build`),
-master will be used to build.
+If no commit id is given (e.g. a plain call on `http://iot-cicd/build/`),
+the default branch (master) will be used to build.
 
 ## Monitoring
 
