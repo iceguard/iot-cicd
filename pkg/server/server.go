@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"io"
@@ -30,6 +31,7 @@ type Server struct {
 	tls    tls
 }
 
+// flushWriter is used for streaming http responses
 type flushWriter struct {
 	f http.Flusher
 	w io.Writer
@@ -140,16 +142,20 @@ func (fw *flushWriter) Write(p []byte) (n int, err error) {
 
 // RegisterBuildHandler registers the endpoint for the build script and its
 // arguments (if any)
-func (srv *Server) RegisterBuildHandler(repoURL, endpoint, buildScript string, args ...string) {
-	klog.Infof("Registering command \"%v %v\" on endpoint %v", buildScript, args, endpoint)
-	srv.mux.HandleFunc(endpoint, buildHandler(repoURL, buildScript, args...))
+func (srv *Server) RegisterBuildHandler(repoURL, endpoint, buildScript string, buildArgs, buildMasterArgs []string) {
+	klog.Infof("Registering command \"%v %v\" on endpoint %v", buildScript, buildArgs, endpoint)
+	srv.mux.HandleFunc(endpoint, buildHandler(repoURL, buildScript, buildArgs, buildMasterArgs))
 }
 
-func buildHandler(repoURL, buildScript string, args ...string) func(http.ResponseWriter, *http.Request) {
+func buildHandler(repoURL, buildScript string, buildArgs, buildMasterArgs []string) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		klog.Infof("Got request to build")
+		errorResponse := func(errMsg string) {
+			promStatusFailedBuild.Inc()
+			klog.Errorf(errMsg)
+			http.Error(w, errMsg, http.StatusFailedDependency)
+		}
 
-		commitID := extractCommitID(r.URL)
+		klog.Infof("Got request to build")
 
 		fw := flushWriter{w: w}
 		if f, ok := w.(http.Flusher); ok {
@@ -161,35 +167,36 @@ func buildHandler(repoURL, buildScript string, args ...string) func(http.Respons
 		// finished. We still need the flushWriter afterwards
 		var buf bytes.Buffer
 		buf.WriteTo(&fw)
-		repoPath, err := cloneRepository(repoURL, commitID, &buf)
-		defer os.RemoveAll(repoPath)
+
+		repo, err := setupRepo(repoURL, extractCommitID(r.URL), bufio.NewWriter(&buf))
+		defer repo.cleanup()
 		if err != nil {
-			promStatusFailedBuild.Inc()
-			klog.Errorf("Error cloning repository: %v", err)
-			http.Error(w, err.Error(), http.StatusFailedDependency)
+			errorResponse("Error getting repository ready: " + err.Error())
 			return
 		}
 
 		// The symlink servers as a static path to mount into the docker
 		// container. If we do not have that, it would not be sufficient
 		// just to stop and start the container again.
-		err = os.Symlink(repoPath, symlinkPath)
+		err = os.Symlink(repo.path, symlinkPath)
+		defer os.RemoveAll(symlinkPath)
 		if err != nil {
-			promStatusFailedBuild.Inc()
-			klog.Errorf("Error creating symlink: %v", err)
-			http.Error(w, err.Error(), http.StatusFailedDependency)
+			errorResponse("Error creating symlink: " + err.Error())
 			return
 		}
-		defer os.RemoveAll(symlinkPath)
 
-		cmd := exec.Command(filepath.Join(symlinkPath, buildScript), args...)
+		var cmd *exec.Cmd
+		if repo.branchName == "master" {
+			cmd = exec.Command(filepath.Join(symlinkPath, buildScript), buildMasterArgs...)
+		} else {
+			cmd = exec.Command(filepath.Join(symlinkPath, buildScript), buildArgs...)
+		}
 		cmd.Stdout = &fw
 		cmd.Stderr = &fw
+
 		err = cmd.Run()
 		if err != nil {
-			promStatusFailedBuild.Inc()
-			klog.Errorf("Error executing command: %v", err)
-			http.Error(w, err.Error(), http.StatusFailedDependency)
+			errorResponse("Error executing command: " + err.Error())
 			return
 		}
 		promStatusOK.Inc()

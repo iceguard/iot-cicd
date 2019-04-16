@@ -40,6 +40,7 @@ func TestWebhookTLS(t *testing.T) {
 }
 
 func TestBuildHandler(t *testing.T) {
+	t.Parallel()
 	// Open the git repo that contains this program to
 	// extract a valid commit id
 	r, err := git.PlainOpen("../..")
@@ -63,7 +64,7 @@ func TestBuildHandler(t *testing.T) {
 
 	for i, tt := range handlertests {
 		t.Run(fmt.Sprintf("cmd Handler Test %v", i), func(t *testing.T) {
-			handlerFunc := buildHandler("https://github.com/iceguard/iot-cicd.git", tt.in[0], tt.in[1:]...)
+			handlerFunc := buildHandler("https://github.com/iceguard/iot-cicd.git", tt.in[0], tt.in[1:], []string{})
 			req, err := http.NewRequest("GET", "/build/"+ref.Hash().String(), nil)
 			if err != nil {
 				t.Fatal(err)
