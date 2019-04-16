@@ -187,8 +187,10 @@ func buildHandler(repoURL, buildScript string, buildArgs, buildMasterArgs []stri
 
 		var cmd *exec.Cmd
 		if repo.branchName == "master" {
+			klog.V(1).Infof("On branch master, calling master args")
 			cmd = exec.Command(filepath.Join(symlinkPath, buildScript), buildMasterArgs...)
 		} else {
+			klog.V(1).Infof("On branch %v, calling normal args", repo.branchName)
 			cmd = exec.Command(filepath.Join(symlinkPath, buildScript), buildArgs...)
 		}
 		cmd.Stdout = &fw

@@ -27,7 +27,7 @@ func main() {
 
 	// Set up the server
 	srv := server.New(fmt.Sprintf("%v:%v", *serverAddr, *serverPort))
-	srv.RegisterBuildHandler(*repoURL, "/build/", *buildScript, buildMasterArgs, buildArgs)
+	srv.RegisterBuildHandler(*repoURL, "/build/", *buildScript, buildArgs, buildMasterArgs)
 	srv.EnablePrometheus("/metrics")
 
 	klog.Infof("Starting to serve on %v:%v\n", *serverAddr, *serverPort)
